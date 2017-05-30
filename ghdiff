@@ -1,0 +1,62 @@
+#!/bin/bash
+#
+# Parse github diff URLs, fetch remotes, then show that diff in the shell.
+
+# Get the objects this is a diff between from the URL
+get_targets() {
+        local url="$1"
+
+        local diff="$(grep -o -e "/compare/[^?]*" <<< "$url")"
+        diff="${diff##/compare/}"
+
+        echo "$diff"
+}
+
+# Get the repository name from the URL
+get_repo() {
+        local url="$1"
+
+        local diff="$(grep -o -e "/[^/]*/compare/" <<< "$url")"
+        diff="${diff%%/compare/}"
+        diff="${diff##/}"
+
+        echo "$diff"
+}
+
+# Load the list of directories that we will search for our repo from given conf
+get_repo_dirs() {
+        local config_path="$1"
+
+        while read line
+        do
+                echo -n "\"$line\" "
+        done < "$config_path"
+}
+
+main() {
+        local config_path="$HOME/.ghdiff"
+        local repo="$(get_repo "$@")"
+        local targets="$(get_targets "$@")"
+        local conf="$(get_repo_dirs "$config_path")"
+
+        if [[ -z "$conf" || "$conf" = " " ]]
+        then
+                # If no conf provided, use $PWD
+                conf="$PWD"
+        fi
+
+        # NOTE: maxdepth prevents this from being really slow when the paths
+        #       contain large repos
+        local repo_path="$(find $conf -maxdepth 1 -type d -name "$repo")"
+        if [[ "$?" -ne 0 ]]
+        then
+                >&2 echo "repo not found"
+                exit 1
+        fi
+
+        cd "$repo_path"
+        git fetch -a
+        git diff "$targets"
+}
+
+main "$@"
